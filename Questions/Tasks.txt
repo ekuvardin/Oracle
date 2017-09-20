@@ -1,0 +1,6 @@
+Training match recognize
+Range predicates on leading column composed reverse index and filter on other columns in this index + https://richardfoote.wordpress.com/category/reverse-key-indexes/
+sysdate + N as bind value                    + It is a bug prior 10g
+Histogram type  + https://docs.oracle.com/database/121/TGSQL/tgsql_histo.htm#TGSQL366
+dynamic sampling +  gather table statistics if not exists + statistics on correlated columns
+index-organized tables logical rowid. block split + https://richardfoote.wordpress.com/2012/04/26/iot-secondary-indexes-the-logical-rowid-guess-component-part-i-lucky/, https://mwidlake.wordpress.com/2011/11/10/iot-part-6b-inserts-into-an-iot/

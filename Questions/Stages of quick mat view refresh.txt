@@ -1,0 +1,9 @@
+1. append insert
+2. nologging
+3. divide mat view on smaller parts
+4. commit scn mat view logs
+5. parallel refresh mat view
+6. dbms_parallel package
+http://alex-td.blogspot.ru/2012/09/using-dbmsparallelexecute-package.html
+ Note
+It seems that Oracle uses statistic by table to determine count of rows, not doing select with count by table. So if you want to have more precise chunking you should gather statistic by table before.

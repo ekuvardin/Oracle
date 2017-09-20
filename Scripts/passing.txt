@@ -1,0 +1,26 @@
+with t as 
+( 
+select to_date('20-FEB-2015','DD-MON-YYYY') SUGG_DATE, 1 count_no, 1 QTY from dual 
+UNION ALL 
+select to_date('20-JUN-2015','DD-MON-YYYY') SUGG_DATE, 1 count_no, 1 QTY from dual 
+UNION ALL 
+select to_date('12-JUN-2015','DD-MON-YYYY') SUGG_DATE, 1 count_no, 5 QTY from dual 
+UNION ALL 
+select to_date('23-MAR-2015','DD-MON-YYYY') SUGG_DATE, 2 count_no, 11 QTY from dual 
+UNION ALL 
+select to_date('2-JAN-2015','DD-MON-YYYY') SUGG_DATE, 1 count_no, 10 QTY from dual 
+UNION ALL 
+select to_date('3-APR-2015','DD-MON-YYYY') SUGG_DATE,4 count_no, 2 QTY from dual 
+) 
+SELECT  SUGG_DATE + IDX SUGG_DATE,
+        1 COUNT_NO,
+        QTY
+  FROM  T,
+        XMLTABLE(
+                 '0 to xs:integer($c)'
+                 PASSING COUNT_NO - 1 as "c"
+                 COLUMNS
+                   IDX NUMBER PATH '.'
+                )
+  ORDER BY SUGG_DATE
+/

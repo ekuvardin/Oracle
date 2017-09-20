@@ -1,0 +1,63 @@
+
+PIVOT через OdciTable интерфейс. Например Anton Scheffer's dynamic pivot function. Теперь создаем последовательность для поддержки hard parse (важно!):
+
+SQL> create sequence force_hard_parse
+  2  /
+
+Sequence created.
+
+SQL> 
+
+
+
+Теперь делаем пивот с обеспечением hard parse:
+
+column force_hard_parse new_value force_hard_parse noprint
+select  force_hard_parse.nextval force_hard_parse
+  from  dual
+/
+select  /* &force_hard_parse */ *
+  from  table(
+              pivot(
+                    'select  correction_point,
+                             rn,
+                             sum(correction_value) val
+                       from  (
+                              select  correction_point,
+                                      lpad(dense_rank() over(order by correction_date nulls last),4) rn,
+                                      correction_value
+                                from  (
+                                       select  correction_point,
+                                               correction_date,
+                                               sum(correction_value) correction_value
+                                         from  tbl
+                                         group by grouping sets(
+                                                                (correction_point),
+                                                                (correction_point,
+                                                                 correction_date
+                                                                )
+                                                               )
+                                      )
+                             )
+                       group by correction_point,
+                                rn'
+                   )
+             )
+/
+old   1: select  /* &force_hard_parse */ *
+new   1: select  /*          1 */ *
+
+  CORRECTION_POINT          1          2          3          4          5          6          7          8          9         10
+------------------ ---------- ---------- ---------- ---------- ---------- ---------- ---------- ---------- ---------- ----------
+ 39647415985298964                93.205                  9.24       5.88      11.76       3.15       1.26      1.624    126.119
+ 65432196749873241                63.287     27.951     30.989       32.2     13.818     14.413     12.992      4.942    200.592
+ 31312313165464646     98.987     78.792     80.969     39.095     23.548     12.726     13.524      7.952      6.748    362.341
+ 98754167321646135    136.003    212.884    122.437      78.96                                                           550.284
+
+SQL> 
+
+
+
+Только все это баловство. Реально это нужно в отчетах и посему любой генератов отчетов делает все это куда проще.
+
+SY. 

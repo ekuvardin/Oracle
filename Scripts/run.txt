@@ -1,0 +1,228 @@
+create tablespace 
+  streams_tbs datafile 'G:\Oracle\app\oradata\ORCL\stream_tbs.dbf'
+  SIZE 100M reuse autoextend on maxsize unlimited;
+
+create user strmadmin identified by strmadmin
+  default tablespace streams_tbs
+  quota unlimited on streams_tbs;
+  
+  grant CREATE session to strmadmin;
+grant CREATE PROCEDURE to strmadmin;
+BEGIN
+  DBMS_STREAMS_AUTH.GRANT_ADMIN_PRIVILEGE(grantee => 'strmadmin',grant_privileges => true);
+  commit;
+END;
+/
+
+ CREATE TABLE SCOTT.EMP (
+  EMPNO    NUMBER(4, 0),
+  ENAME    VARCHAR2(10 BYTE),
+  JOB      VARCHAR2(9 BYTE),
+  MGR      NUMBER(4, 0),
+  HIREDATE DATE,
+  SAL      NUMBER(7, 2),
+  COMM     NUMBER(7, 2),
+  DEPTNO   NUMBER(2, 0),
+  CONSTRAINT PK_EMP PRIMARY KEY (EMPNO)
+);
+
+CREATE TABLE SCOTT.AUDIT_EMP (
+  EMPNO     NUMBER(4, 0),
+  ENAME     VARCHAR2(10 BYTE),
+  JOB       VARCHAR2(9 BYTE),
+  MGR       NUMBER(4, 0),
+  UPD_DATE  DATE,
+  USER_NAME VARCHAR2(50 BYTE),
+  ACTION    NVARCHAR2(50)
+);
+
+ grant all on scott.emp to strmadmin;
+
+ grant all on scott.AUDIT_EMP to strmadmin;
+
+ connect as strmadmin/strmadmin
+
+BEGIN
+  DBMS_STREAMS_ADM.SET_UP_QUEUE(
+    queue_table => 'strmadmin.streams_queue_table',
+    queue_name => 'strmadmin.streams_queue');
+END;
+/
+
+BEGIN
+  DBMS_STREAMS_ADM.ADD_TABLE_RULES(
+    table_name => 'scott.emp',
+    streams_type => 'capture',
+    streams_name => 'capture_emp',
+    queue_name => 'strmadmin.streams_queue',
+    include_dml => true,
+    include_ddl => false,
+    inclusion_rule => true);
+END;
+/
+
+BEGIN
+DBMS_CAPTURE_ADM.INCLUDE_EXTRA_ATTRIBUTE(
+  capture_name => 'capture_emp',
+  attribute_name => 'username',
+  include => true);
+END;
+/
+ 
+ DECLARE
+iscn NUMBER;
+  BEGIN
+    iscn := DBMS_FLASHBACK.GET_SYSTEM_CHANGE_NUMBER();
+    DBMS_APPLY_ADM.SET_TABLE_INSTANTIATION_SCN(
+      source_object_name => 'scott.emp',
+      source_database_name => 'ORCL',
+      instantiation_scn => iscn);
+ END;
+/
+
+CREATE OR REPLACE PROCEDURE STRMADMIN.emp_dml_handler(in_any IN ANYDATA) IS
+  lcr SYS.LCR$_ROW_RECORD;
+  rc PLS_INTEGER;
+  command VARCHAR2(30);
+  old_values SYS.LCR$_ROW_LIST;
+  PROCEDURE wer IS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+     insert into streams_monitor (txt_msg)
+  values (command ||DBMS_STREAMS.CONVERT_LCR_TO_XML(in_any) );
+    COMMIT;
+  END;
+BEGIN
+  -- Access the LCR 
+  rc := in_any.GETOBJECT(lcr);
+  -- Get the object command type
+  command := lcr.GET_COMMAND_TYPE();
+ 
+-- I am inserting the XML equivalent of the LCR into the monitoringtable.
+
+
+-- Set the command_type in the row LCR to INSERT
+  lcr.SET_COMMAND_TYPE('INSERT');-- Set the object_name in the row LCR to EMP_DEL
+  lcr.SET_OBJECT_NAME('AUDIT_EMP');
+ 
+-- Set the new values to the old values for update and delete
+  IF command IN ('DELETE', 'UPDATE') THEN-- Get the old values in the row LCR 
+    old_values := lcr.GET_VALUES('old');
+-- Set the old values in the row LCR to the new values in the row LCR 
+    lcr.SET_VALUES('new', old_values);
+    -- Set the old values in the row LCR to NULL
+    lcr.SET_VALUES('old', NULL);
+   END IF;
+    
+  lcr.DELETE_COLUMN('HIREDATE');
+
+  lcr.DELETE_COLUMN('SAL');
+
+  lcr.DELETE_COLUMN('COMM');
+
+  lcr.DELETE_COLUMN('DEPTNO');
+
+-- Add a SYSDATE for upd_date
+  lcr.ADD_COLUMN('new', 'UPD_DATE', ANYDATA.ConvertDate(SYSDATE));
+-- Add a user column
+  lcr.ADD_COLUMN('new', 'user_name',lcr.GET_EXTRA_ATTRIBUTE('USERNAME') );
+-- Add an action column
+  lcr.ADD_COLUMN('new', 'ACTION', ANYDATA.ConvertVarChar2(command));
+ 
+-- Make the changes
+  lcr.EXECUTE(true);
+    wer();
+      commit;
+END;
+/
+ 
+ BEGIN
+  DBMS_APPLY_ADM.SET_DML_HANDLER(
+    object_name => 'scott.emp',
+    object_type => 'TABLE',
+    operation_name => 'INSERT',
+    error_handler => false,
+    user_procedure => 'strmadmin.emp_dml_handler',
+    apply_database_link => NULL,
+    apply_name => NULL);
+END;
+/
+  
+BEGIN
+  DBMS_APPLY_ADM.SET_DML_HANDLER(
+    object_name => 'scott.emp',
+    object_type => 'TABLE',
+    operation_name => 'UPDATE',
+    error_handler => false,
+    user_procedure => 'strmadmin.emp_dml_handler',
+    apply_database_link => NULL,
+    apply_name => NULL);
+END;
+/
+  
+BEGIN
+  DBMS_APPLY_ADM.SET_DML_HANDLER(
+    object_name => 'scott.emp',
+    object_type => 'TABLE',
+    operation_name => 'DELETE', 
+    error_handler => false,
+    user_procedure => 'strmadmin.emp_dml_handler',
+    apply_database_link => NULL,
+    apply_name => NULL);
+END;
+/
+
+DECLARE
+  emp_rule_name_dml VARCHAR2(30);
+  emp_rule_name_ddl VARCHAR2(30);
+BEGIN
+  DBMS_STREAMS_ADM.ADD_TABLE_RULES(
+    table_name => 'SCOTT.EMP',
+    streams_type => 'apply',
+    streams_name => 'apply_emp',
+    queue_name => 'strmadmin.streams_queue',
+    include_dml => true,
+    include_ddl => false,
+    source_database => 'ORCL',
+    dml_rule_name => emp_rule_name_dml,
+    ddl_rule_name => emp_rule_name_ddl);
+
+  DBMS_APPLY_ADM.SET_ENQUEUE_DESTINATION(
+    rule_name => emp_rule_name_dml,
+    destination_queue_name => 'strmadmin.streams_queue');
+END;
+/
+
+BEGIN
+  DBMS_APPLY_ADM.SET_PARAMETER(
+    apply_name => 'apply_emp',
+    parameter => 'disable_on_error',
+    value => 'n');
+END;
+/
+ 
+
+BEGIN
+  DBMS_APPLY_ADM.START_APPLY(apply_name => 'apply_emp');
+END;
+/
+ 
+ 
+BEGIN
+  DBMS_CAPTURE_ADM.START_CAPTURE(capture_name => 'capture_emp');
+END;
+/
+
+DECLARE
+  enqueue_options DBMS_AQ.enqueue_options_t;
+  message_properties DBMS_AQ.message_properties_t;
+  message_handle RAW(16);
+  recipients DBMS_AQ.aq$_recipient_list_t;
+BEGIN
+  recipients(1) := sys.aq$_agent('anydata_subscriber','strmadmin.streams_queue', NULL);
+  message_properties.recipient_list := recipients;
+
+EXCEPTION WHEN OTHERS THEN
+  insert into streams_monitor (txt_msg)values ('Anydata: ' || DBMS_UTILITY.FORMAT_ERROR_STACK );
+END;
+/

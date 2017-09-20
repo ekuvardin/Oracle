@@ -1,0 +1,5 @@
+Oracle dimensions. What is it? 
+Commit scn mat view log. What is it? + http://www.adellera.it/blog/2009/11/03/11gr2-materialized-view-logs-changes/
+Single hash cluster. Careful sizing needed to avoid hash collisions and waste of space + https://community.oracle.com/message/2504394?#2502394
+Oracle operator binding. What was that? + http://psoug.org/reference/operator.html
+Китаев А., Шень А., Вялый М. «Классические и квантовые вычисления» — хорошее введение. 

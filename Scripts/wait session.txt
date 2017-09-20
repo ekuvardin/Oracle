@@ -1,0 +1,61 @@
+declare
+   l_row   t_lock%rowtype;
+begin
+   declare 
+      e exception;
+      pragma exception_init(e,-30006);
+   begin
+      select * into l_row from t_lock for update wait 5;
+   exception
+      when e then 
+         for locker in ( select distinct 
+                            h.BLOCKING_SESSION
+                           ,h.BLOCKING_SESSION_SERIAL#
+                           ,h.BLOCKING_INST_ID
+                           ,h.BLOCKING_HANGCHAIN_INFO
+                           ,h.BLOCKING_SESSION_STATUS
+                         from v$active_session_history h
+                         where h.session_id=userenv('sid')
+                           and h.SAMPLE_TIME >= systimestamp - interval '5' second
+                       )
+         loop
+            dbms_output.put_line(locker.blocking_session);
+         end loop;
+   end;
+end;
+/
+
+select h.SAMPLE_TIME
+      ,h.EVENT
+      ,h.BLOCKING_SESSION_STATUS
+      ,h.BLOCKING_SESSION
+      ,h.BLOCKING_SESSION_SERIAL#
+      ,h.BLOCKING_INST_ID
+      ,h.BLOCKING_HANGCHAIN_INFO
+      ,h.WAIT_CLASS
+      ,h.WAIT_TIME
+      ,h.P1TEXT,h.P1
+      ,h.P2TEXT,h.P2
+      ,h.P2TEXT,h.P2
+from v$active_session_history h 
+where h.SAMPLE_TIME>systimestamp-interval '10' second
+and h.SESSION_ID=userenv('SID');
+
+
+select 
+  wh.SID                                   my_sid
+ ,l.SID                                    blocking_sid
+ ,l.TYPE
+ ,l.ID1
+ ,l.ID2
+ ,l.LMODE
+ ,l.REQUEST
+ ,l.CTIME
+ ,l.BLOCK
+from v$session_wait_history wh
+    ,v$lock l
+where wh.SID=userenv('SID')
+and wh.event='enq: TX - row lock contention'
+and wh.p2=l.id1(+)
+and wh.p3=l.id2(+)
+/

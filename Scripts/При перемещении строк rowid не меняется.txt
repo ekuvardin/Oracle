@@ -1,0 +1,43 @@
+create table for_rowid_change (
+Name varchar2(4000) PRIMARY KEY,
+Value varchar2(4000));
+/
+
+insert into for_rowid_change(Name, Value) values('e','test1');
+insert into for_rowid_change(Name, Value) values('ee','test2');
+insert into for_rowid_change(Name, Value) values('eee','test3');
+insert into for_rowid_change(Name, Value) values('eeee','test4');
+insert into for_rowid_change(Name, Value) values('eeeee','test5');
+insert into for_rowid_change(Name, Value) values('eeeeee','test6');
+insert into for_rowid_change(Name, Value) values('eeeeeee','test7');
+insert into for_rowid_change(Name, Value) values('eeeeeeee','test8');
+insert into for_rowid_change(Name, Value) values('eeeeeeeee','test9');
+insert into for_rowid_change(Name, Value) values('eeeeeeeeee','test10');
+
+select t.*, rowid from for_rowid_change t
+order by name
+/
+
+begin
+DBMS_STATS.GATHER_TABLE_STATS ('ibs', 'for_rowid_change');
+end;
+/
+
+select * from ALL_TABLES where table_name = upper('for_rowid_change');
+/
+
+update for_rowid_change 
+set value = rpad('z',4000,'z');
+/
+
+begin
+DBMS_STATS.GATHER_TABLE_STATS ('ibs', 'for_rowid_change');
+end;
+/
+
+select * from ALL_TABLES where table_name = upper('for_rowid_change');
+/
+
+select t.*, rowid from for_rowid_change t
+order by name
+/

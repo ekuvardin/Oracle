@@ -1,0 +1,14 @@
+SQL> select  deptno,
+  2          rtrim(xmlcast(xmlagg(xmlelement(e,ename,',')) as clob),',') list
+  3    from  emp
+  4    group by deptno
+  5  /
+
+    DEPTNO LIST
+---------- --------------------------------------------------
+        10 CLARK,MILLER,KING
+        20 SMITH,FORD,ADAMS,SCOTT,JONES
+        30 ALLEN,JAMES,TURNER,BLAKE,MARTIN,WARD
+
+SQL> 
+

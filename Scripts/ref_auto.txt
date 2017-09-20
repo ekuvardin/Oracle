@@ -1,0 +1,109 @@
+C_ALL_LIC		constant varchar2(16) 	:= 'ALL_LIC'; 		-- Датчик есть в обеих инсталяциях
+C_FIRST_LIC		constant varchar2(16) 	:= 'FIRST_LIC'; 	-- Датчик есть только в первой инсталляции
+C_SECOND_LIC	constant varchar2(16) 	:= 'SECOND_LIC'; 	-- Датчик есть только во второй инсталляции
+
+type r_sensor_compare is record(
+	save_type	varchar2(16),				-- Тип сохранения датчика
+	is_cache boolean,						-- Надо ли, чтобы кэшировалось значение датчика значение датчика
+	sensor_value &lib_test.r_sensor_value);	-- Сохраненные значения датчика
+
+-- таблица, хранящая всю информацию о датчиках
+type t_sensors is table of r_sensor_compare index by varchar2(32767);
+
+-- Заполнение имен справочников
+procedure fill_sensor_names(p_sensors in out nocopy t_sensors) is
+l_sensor_compare r_sensor_compare;
+begin
+	-- min APP1.OP_11 max APP1.OP_110;
+	for i in 1..10
+		loop
+			--name :=  'APP1.OP_1' || i;
+			
+			if i >= 1 AND i<= 7 then
+				-- Датчик пристутствует в обеих лицензиях
+				l_sensor_compare.save_type :=  C_ALL_LIC;
+			elsif i = 8 then
+				-- Датчик присутствует только во второй лицензии
+				l_sensor_compare.save_type :=  C_SECOND_LIC;
+			elsif i in(9,10) then
+				-- Датчик присутсвует только в первой лицензии
+				l_sensor_compare.save_type :=  C_FIRST_LIC;
+			end if;
+			
+			if i in(1,5) then
+				-- У этих датчиков надо, чтобы кэшировалось значение датчиков.
+				l_sensor_compare.is_cache := false;
+			else
+				-- У этих датчиков надо, чтобы значение не кэшировалось.
+				l_sensor_compare.is_cache := true;
+			end if;
+			
+			p_sensors('APP1.OP_1' || i) := l_sensor_compare;
+		end loop;
+end;
+
+-- Первый тест
+procedure test_01 is
+	sensors t_sensors; -- таблица, в которой хранятся старые значения датчиков
+	l_sensor_old &lib_test.r_sensor_value; -- старые значения датчиков
+	l_sensor_new &lib_test.r_sensor_value; -- новые значения датчиков
+	l_name system_options.id%type;
+begin
+	-- Очистка данных в таблице, по которым работают датчики
+	&lib_test.delete_data;
+	
+	fill_sensor_names(sensors);
+	-- установка лицензионной информации
+	&lib_test.prepare_lic('APP');	
+
+	-- Дополнительные манипуляции
+	[TEST_LIC_TEST].[TESTS_APP].set_check_time_test_01();
+	
+	-- Сохранение старых значений
+	l_name := sensors.first;
+	while l_name is not null
+		loop
+			if sensors(l_name).save_type <> C_SECOND_LIC then
+				&lib_test.get_data(l_name, sensors(l_name).sensor_value);
+			end if;
+			l_name := sensors.next(l_name);
+		end loop;
+	
+	-- Генерация данных
+	&lib_test.create_data;
+	
+	-- Установка только описания приложения
+	&lib_test.install_license_data('APP_ONLY');
+	
+	-- Сравнение значений датчиков	
+	l_name := sensors.first;
+	while l_name is not null
+		loop
+			-- Если датчик был в обеиз лицензиях
+			if sensors(l_name).save_type = C_ALL_LIC then
+				
+				&lib_test.get_data(l_name, l_sensor_new);
+				l_sensor_old := sensors(l_name).sensor_value;
+				
+				if sensors(l_name).is_cache then
+					pass.is_equal(l_sensor_old.value, l_sensor_new.value, &lib_test.get_message_compare(l_sensor_old.value, l_sensor_new.value, l_name));
+				else
+					if l_sensor_old.value = l_sensor_new.value or (l_sensor_old.value is null and l_sensor_new.value is null) then
+						pass.fail(&lib_test.get_message_compare(l_sensor_old.value, l_sensor_new.value, l_name));
+					end if;
+				end if;
+
+			-- Если датчик был только во второй лицензии
+			elsif sensors(l_name).save_type = C_SECOND_LIC then			
+				pass.is_false(&lib_test.is_exists(l_name), &lib_test.get_message_is_exists(l_name));
+				
+			-- Если датчик был только в первой лицензии
+			elsif sensors(l_name).save_type = C_FIRST_LIC then			
+				pass.is_equal(1, to_number(l_sensor_new.value), &lib_test.get_message_compare(1, l_sensor_new.value, l_name));				
+			end if;
+			l_name := sensors.next(l_name);
+		end loop;
+		
+	-- удаление данных
+	&lib_test.delete_data;
+end;

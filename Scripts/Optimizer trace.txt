@@ -1,0 +1,1 @@
+DBMS_SQLDIAG.DUMP_TRACE(&sql_id, P_COMPONENT=>’Optimizer’):

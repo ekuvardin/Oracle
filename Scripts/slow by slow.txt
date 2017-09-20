@@ -1,0 +1,18 @@
+declare
+  v number;
+  r clob;
+  s varchar2(32000);
+begin
+  dbms_lob.createtemporary(r,true);
+  for i in 1..67442 loop
+    s := s || ','||to_char(i);
+    if length(s) > 16000 then
+      dbms_lob.append(r, s);
+      s := '';
+    end if;
+  end loop;
+  dbms_lob.append(r, s);
+  dbms_output.put_line('size='||dbms_lob.getlength(r));
+  dbms_lob.freetemporary(r);
+end;
+/

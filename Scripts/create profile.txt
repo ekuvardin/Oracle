@@ -1,0 +1,121 @@
+starwars,
+
+вот рыба:
+-
+
+declare
+    C_SQL_ID          constant varchar2(13)  :='&sqlid';
+    C_PROFILE_NAME    constant varchar2(30)  :='PROF_'||C_SQL_ID;
+    C_DESCRIPTION     constant varchar2(30)  :='test profile';
+    C_FORCE_MATCH     boolean                :=true;
+    ar_profile_hints  sys.sqlprof_attr;
+    cl_sql_text       clob;
+    l_other_xml       xmltype;
+    -- explain plan:
+    function get_outlines_from_plan_table(p_statement_id in varchar2)
+       return xmltype 
+    is res xmltype;
+    begin
+       select xmltype(other_xml) into res
+       from  plan_table pt
+       where pt.statement_id = p_statement_id
+         and other_xml is not null;
+         
+       return res;
+    exception when no_data_found then raise_application_error(-20000,'NO_DATA_FOUND: PLAN_TABLE');
+    end;
+    -- AWR:
+    function get_outlines_from_plan_table(
+                   p_src_sql_id  in varchar2, 
+                   p_src_plan_hv in number
+       )
+       return xmltype
+    is res xmltype;
+    begin
+       select xmltype(other_xml) into res
+       from dba_hist_sql_plan p
+       where   p.sql_id = p_src_sql_id
+           and p.dbid in (select i.dbid from dba_hist_database_instance i)
+           and p.plan_hash_value = p_src_plan_hv
+           and p.other_xml is not null;
+       return res;
+    exception when no_data_found then raise_application_error(-20000,'NO_DATA_FOUND: AWR');
+    end;
+    -- V$SQL_PLAN
+    function get_outlines_from_V$SQL_PLAN(
+                   p_src_sql_id  in varchar2, 
+                   p_src_child   in number
+       )
+       return xmltype
+    is res xmltype;
+    begin
+       select xmltype(other_xml) into res
+       from V$SQL_PLAN p
+       where   p.sql_id       = p_src_sql_id
+           and p.CHILD_NUMBER = p_src_child
+           and p.other_xml is not null;
+       return res;
+    exception when no_data_found then raise_application_error(-20000,'NO_DATA_FOUND: AWR');
+    end;
+begin
+   -- 1. Можем заполнить хинты вручную:
+   --   ar_profile_hints:=sys.sqlprof_attr('LEADING(P)','USE_CONCAT(@SEL$2)');
+   -- 2. или берем аутлайны из plan_table
+   l_other_xml := get_outlines_from_plan_table('&statement_id');
+   -- 3. или из v$sql_plan
+   -- l_other_xml := get_outlines_from_plan_table('&AWR_SRC_SQL_ID',&AWR_SRC_PLAN_HV);
+   -- 4. или из dba_hist_sql_plan:
+   -- l_other_xml := get_outlines_from_V$SQL_PLAN('&src_sql_id', &src_child)
+
+   -- получаем хинты запроса:
+    select
+        d.hint
+        bulk collect into ar_profile_hints
+    from
+        xmltable('/other_xml/outline_data/*'
+            passing (l_other_xml)
+            columns
+            "HINT" varchar2(4000) PATH '/hint'
+    ) d;
+    
+    -- Получаем текст запроса:
+    select 
+      coalesce(
+          (select a.sql_fulltext from v$sqlarea a        where a.sql_id = C_SQL_ID and rownum = 1 )
+         ,(select t.sql_text     from dba_hist_sqltext t where t.sql_id = C_SQL_ID and rownum = 1 and dbid = (select db.DBID from v$database db))
+      ) into cl_sql_text
+    from dual;
+    
+    if cl_sql_text is null then
+       raise_application_error(-20000,'SQL_TEXT was not found for sql_id='||C_SQL_ID);
+    end if;
+    
+    dbms_sqltune.import_sql_profile(
+         sql_text    => cl_sql_text
+        ,profile     => ar_profile_hints
+        ,name        => C_PROFILE_NAME
+        ,description => C_DESCRIPTION
+        ,category    => 'DEFAULT'
+        ,replace     => true
+        ,force_match => C_FORCE_MATCH
+    );
+
+    dbms_output.put_line('=========================================');
+    dbms_output.put_line('SQL Profile '||C_PROFILE_NAME||' created.');
+    dbms_output.put_line('HINTS:');
+    for i in ar_profile_hints.first..ar_profile_hints.last loop
+       dbms_output.put_line(ar_profile_hints(i));
+    end loop;
+
+end;
+/
+
+
+порядок в твоем случае такой:
+1. берешь текст запроса и хинтуешь его до нужного плана
+2. выполняешь
+
+explain plan set statement_id='<тут придумай какой-нибудь идентификатор плану, например BLABLA>' for <хинтованный_запрос>
+
+(можешь проверить этот план через dbms_xplan.display)
+3. выполняешь приведенный выше анонимный блок, указывая sql_id оригинального запроса и тот же самый идентификатор - STATEMENT_ID. Если все ок, то в выводе увидишь, что профиль создан и хинты этого нового профиля 
